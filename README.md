@@ -42,7 +42,7 @@ Cross-Project
 ### Quick Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ironbark.git
+git clone https://github.com/chatgptnotes/ironbark.git
 cd ironbark
 
 # macOS / Linux / Git Bash on Windows
