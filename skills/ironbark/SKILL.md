@@ -1,86 +1,38 @@
 ---
 name: ironbark
-description: "Hermes-style learning loop that auto-bootstraps projects with CLAUDE.md, harvests full skills from sessions, and shares them cross-project."
+description: "Hermes-style learning loop — harvests skills from sessions, auto-syncs with chatgptnotes/ironbark community repo."
 origin: ECC
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Ironbark — Self-Improving Learning Loop
 
-A cross-project learning system inspired by Hermes Agent's skill creation loop. Ironbark automatically bootstraps projects, harvests reusable skills from complex sessions, and shares them globally.
+Harvests reusable skills from complex sessions and shares them via `chatgptnotes/ironbark`.
 
-## When to Activate
+## Community Repo
 
-- After a complex session with 15+ tool calls involving trial-and-error or debugging
-- When the user solved a non-trivial problem through experimentation
-- When the user changed approach mid-task due to experiential findings
-- When the Stop hook nudges about harvestable patterns
-- When the user explicitly runs `/ironbark`
+**All skills auto-sync with `github.com/chatgptnotes/ironbark`**
+
+| Direction | When | Hook |
+|-----------|------|------|
+| **Pull** | Session start + mid-session (stale >30min) | `ironbark-sync-pull.js` |
+| **Push** | After `/ironbark` harvests | `ironbark-sync-push.js` (automatic) |
 
 ## How It Works
 
-### 1. Auto-Bootstrap (SessionStart Hook)
+1. **SessionStart** — auto-bootstrap CLAUDE.md + pull community skills
+2. **Mid-session** — PreToolUse pull if stale >30min
+3. **Session nudge** — suggests `/ironbark` after 15+ tool calls
+4. **Harvest** — `/ironbark` reviews session, creates generic SKILL.md files
+5. **Auto-push** — Stop hook pushes new skills to `chatgptnotes/ironbark`
 
-Every time a session starts, the `auto-claude-md.js` hook checks:
-- **No CLAUDE.md** → creates one tailored to the detected stack with Ironbark enabled
-- **CLAUDE.md without Ironbark** → appends the `## Ironbark` section
-- **CLAUDE.md with Ironbark** → does nothing
+## Generalization Rule
 
-### 2. Session Nudge (Stop Hook)
-
-After each Claude response, `ironbark-auto.js` counts tool calls in the transcript. When the count exceeds 15, it nudges the user to run `/ironbark`.
-
-### 3. Skill Harvesting (/ironbark Command)
-
-The `/ironbark` command reviews the entire session and:
-1. Identifies all harvestable patterns (non-trivial approaches, debugging discoveries, integration quirks)
-2. Deduplicates against existing skills and instincts
-3. Creates or updates full SKILL.md files
-4. Asks for user confirmation before saving
-
-### 4. Cross-Project Sharing
-
-All harvested skills go to `~/.claude/skills/harvested/` (global). Each skill's frontmatter tracks:
-- `source_project` — where the skill was first discovered
-- `projects_used_in` — all projects that have benefited from this skill
-- `tags` — language, framework, domain for relevance matching
-
-Skills from Project A are automatically available in Project B.
-
-## Skill Storage
-
-```
-~/.claude/skills/harvested/
-├── prisma-migration-rollback/
-│   └── SKILL.md
-├── windows-path-escaping/
-│   └── SKILL.md
-└── modbus-timeout-handling/
-    └── SKILL.md
-```
-
-## Relationship to Other Learning Systems
-
-| System | Granularity | Trigger | Output |
-|--------|------------|---------|--------|
-| `/learn` | Single pattern | Manual | `skills/learned/*.md` |
-| `/learn-eval` | Single pattern + quality gate | Manual | `skills/learned/*.md` |
-| Instincts (v2.1) | Atomic micro-behavior | Auto (hooks) | `homunculus/instincts/` |
-| **Ironbark** | **Multiple full skills** | **Manual + auto-nudge** | **`skills/harvested/*/SKILL.md`** |
-
-Ironbark does NOT replace the other systems — it complements them:
-- Instincts capture micro-patterns continuously
-- `/learn` captures single patterns on demand
-- **Ironbark harvests full, structured skills from entire sessions**
-
-## Proactive Behavior
-
-When you notice a session has involved significant trial-and-error, debugging, or course corrections, suggest running `/ironbark` before the session ends. Frame it as:
-
-> "This session involved some non-trivial problem-solving. Want me to run `/ironbark` to harvest reusable skills from what we learned?"
+All skills MUST use generic, domain-neutral terminology with Example Domains tables.
 
 ## Configuration
 
-- **Nudge threshold**: 15 tool calls (configured in `ironbark-auto.js`)
-- **Skill storage**: `~/.claude/skills/harvested/` (global, cross-project)
-- **CLAUDE.md section**: `## Ironbark` (auto-injected by `auto-claude-md.js`)
+- **Repo**: `chatgptnotes/ironbark` (hardcoded in `lib/sync.js`)
+- **Pull staleness**: 30 minutes
+- **Push cooldown**: 5 minutes
+- **Nudge threshold**: 15 tool calls
