@@ -1,8 +1,8 @@
 ---
 name: ironbark
-description: "Hermes-style learning loop — harvests skills from sessions, auto-syncs with chatgptnotes/ironbark community repo every 30 minutes."
+description: "Hermes-style learning loop — harvests skills from sessions, auto-syncs with chatgptnotes/ironbark community repo every 30 minutes, and injects a live skill catalog into every project's CLAUDE.md."
 origin: ECC
-version: 2.1.0
+version: 2.2.0
 ---
 
 # Ironbark — Self-Improving Learning Loop
@@ -21,12 +21,22 @@ Harvests reusable skills from complex sessions and shares them via `chatgptnotes
 
 ## How It Works
 
-1. **SessionStart** — auto-bootstrap CLAUDE.md + pull community skills
+1. **SessionStart** — `auto-claude-md.js` calls `sync.pull()`, enumerates all harvested skills, and writes a fresh catalog into the project's `CLAUDE.md` between `<!-- IRONBARK:START -->` and `<!-- IRONBARK:END -->` markers. Content outside the markers is never touched.
 2. **Mid-session** — PreToolUse pull if stale >30min
 3. **Session nudge** — suggests `/ironbark` after 15+ tool calls
 4. **Harvest** — `/ironbark` reviews session, creates generic SKILL.md files
 5. **Auto-push (event)** — Stop hook pushes new skills to `chatgptnotes/ironbark`
 6. **Background sync (scheduled)** — every 30 min, the OS scheduler runs `sync-cli.js` which pulls any new community skills and pushes any local harvested skills that aren't upstream yet. Works even if Claude Code is closed.
+
+## CLAUDE.md Catalog
+
+On every SessionStart, `auto-claude-md.js` injects a table of every available harvested skill into the project's `CLAUDE.md`:
+
+- **Name** (from frontmatter `name:`)
+- **Description** (from frontmatter `description:`)
+- **Path** (absolute path to the SKILL.md file)
+
+The table is delimited by `<!-- IRONBARK:START -->` / `<!-- IRONBARK:END -->` markers so it can be safely regenerated without clobbering user edits. Legacy plain `## Ironbark` sections from pre-2.2 versions are auto-migrated on first run.
 
 ## Generalization Rule
 

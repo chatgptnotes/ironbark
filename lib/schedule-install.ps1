@@ -17,25 +17,58 @@ if (-not (Test-Path $SyncCli)) {
 }
 
 # Locate node.exe (falls back to PATH-resolved node)
-$NodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
-if (-not $NodeExe) {
+$NodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $NodeCmd) {
     Write-Host "  node.exe not found in PATH - skipping scheduler"
     Write-Host "  (Ironbark will still sync on Claude Code session events via hooks)"
     exit 0
 }
+$NodeExe = $NodeCmd.Source
 
-# Use schtasks.exe: simpler, more reliable than New-ScheduledTask for recurring tasks
-$cmdArgs = "`"$SyncCli`""
-$runCmd = "`"$NodeExe`" $cmdArgs"
+# Use the modern ScheduledTasks cmdlets instead of schtasks.exe.
+# They accept -Execute / -Argument as distinct parameters, so paths with
+# spaces (e.g. "C:\Program Files\nodejs\node.exe") are handled correctly
+# without manual quoting hacks.
+try {
+    # Remove any pre-existing task so we can re-register cleanly
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($existing) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
 
-# /SC MINUTE /MO 30  = every 30 minutes
-# /F                 = force replace if already exists
-# /RL LIMITED        = run with user's current privileges (no UAC elevation)
-$result = schtasks.exe /Create /SC MINUTE /MO 30 /TN $TaskName /TR $runCmd /F /RL LIMITED 2>&1
+    $action = New-ScheduledTaskAction -Execute $NodeExe -Argument ('"' + $SyncCli + '"')
 
-if ($LASTEXITCODE -eq 0) {
+    # -Once at now, repeating every 30 minutes for effectively forever.
+    # PowerShell requires RepetitionDuration alongside RepetitionInterval
+    # when using -Once; use 1000 days (re-registered on each install).
+    $trigger = New-ScheduledTaskTrigger `
+        -Once `
+        -At (Get-Date) `
+        -RepetitionInterval (New-TimeSpan -Minutes 30) `
+        -RepetitionDuration (New-TimeSpan -Days 1000)
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+        -MultipleInstances IgnoreNew
+
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId $env:USERNAME `
+        -LogonType Interactive `
+        -RunLevel Limited
+
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Principal $principal `
+        -Description "Ironbark community skill sync (every 30 min)" | Out-Null
+
     Write-Host "  Windows scheduled task '$TaskName' registered (every 30 min)"
-} else {
-    Write-Host "  schtasks registration failed: $result"
+} catch {
+    Write-Host "  Scheduled task registration failed: $($_.Exception.Message)"
     Write-Host "  (Ironbark will still sync on Claude Code session events via hooks)"
 }

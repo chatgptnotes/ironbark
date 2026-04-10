@@ -125,6 +125,32 @@ Use the shadow database approach with `prisma migrate resolve`...
 ...
 ```
 
+## Dynamic Skill Catalog in CLAUDE.md
+
+Every time you open a project in Claude Code, the `auto-claude-md.js` SessionStart hook:
+
+1. Calls `sync.pull()` to refresh the community skills (respects 30-min staleness)
+2. Enumerates every `~/.claude/skills/harvested/*/SKILL.md` on your machine
+3. Writes a dynamic catalog into your project's `CLAUDE.md` between markers:
+
+```markdown
+<!-- IRONBARK:START - Auto-generated, do not edit -->
+## Ironbark
+
+...overview...
+
+### Available Harvested Skills (N)
+
+| Skill | Description | Path |
+|-------|-------------|------|
+| `skill-a` | Description from frontmatter | `~/.claude/skills/harvested/skill-a/SKILL.md` |
+| `skill-b` | ...                          | ...                                            |
+
+<!-- IRONBARK:END -->
+```
+
+The block is regenerated on every session start, so the catalog always reflects the latest state after a sync. **Content outside the IRONBARK markers is never touched** — your own CLAUDE.md additions are preserved. Legacy projects that have a plain `## Ironbark` section from the pre-2.2 version are automatically migrated to the marker-delimited format on first run.
+
 ## Community Sync
 
 Ironbark auto-syncs harvested skills with the shared community repo at [`chatgptnotes/ironbark`](https://github.com/chatgptnotes/ironbark). Any skill you harvest becomes available to every other Ironbark user on their next sync, and vice versa.
