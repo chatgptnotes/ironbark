@@ -125,6 +125,49 @@ Use the shadow database approach with `prisma migrate resolve`...
 ...
 ```
 
+## Community Sync
+
+Ironbark auto-syncs harvested skills with the shared community repo at [`chatgptnotes/ironbark`](https://github.com/chatgptnotes/ironbark). Any skill you harvest becomes available to every other Ironbark user on their next sync, and vice versa.
+
+### Three sync paths (all run automatically)
+
+| Path | When | What it does |
+|------|------|--------------|
+| **SessionStart hook** | Every Claude Code session start | Pulls new community skills |
+| **Stop hook** | After `/ironbark` harvests a skill | Pushes the new skill |
+| **30-minute scheduled sync** | Every 30 min, in the background | Full bidirectional pull + push, even if Claude Code is closed |
+
+The background sync is registered during installation:
+- **macOS / Linux**: cron entry `*/30 * * * * node ~/.claude/ironbark/lib/sync-cli.js`
+- **Windows**: Scheduled Task `IronbarkSync` running `node.exe sync-cli.js` every 30 minutes
+
+### How it works under the hood
+
+1. A full clone of `chatgptnotes/ironbark` lives at `~/.claude/ironbark-repo/`
+2. Your local harvested skills live at `~/.claude/skills/harvested/`
+3. Sync copies files bidirectionally between the two directories using mtime (newest wins), then commits and pushes any local additions
+4. A lock file at `$TMPDIR/ironbark-sync.lock` prevents concurrent syncs from stepping on each other
+
+### Commit identity
+
+Pushes use your real `git config user.name` / `user.email` if set, so skills you contribute are properly attributed. If no git config exists, a fallback identity `ironbark-sync (<username>) <username@hostname.ironbark.local>` is used instead.
+
+### Opt out
+
+Set the environment variable to disable all sync (hooks and scheduled task will become no-ops):
+
+```bash
+# macOS / Linux
+export IRONBARK_SYNC_DISABLED=1
+
+# Windows (persistent)
+setx IRONBARK_SYNC_DISABLED 1
+```
+
+### Security note
+
+Pulled skills come from other users and are loaded into Claude's context on your next session. Only install Ironbark from sources you trust, and review new community skills periodically at [`chatgptnotes/ironbark/harvested`](https://github.com/chatgptnotes/ironbark/tree/master/harvested).
+
 ## How It Differs From Existing Learning Systems
 
 | System | Granularity | Trigger | Output |

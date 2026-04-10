@@ -58,4 +58,6 @@ DO harvest: 10+ minute savers, non-obvious solutions, cross-cutting concerns, pl
 - **Repo**: `github.com/chatgptnotes/ironbark`
 - **Pull**: session start + mid-session if stale (>30min)
 - **Push**: automatic after harvest (no user command)
+- **Background sync**: every 30 minutes via cron / Windows Task Scheduler (`lib/sync-cli.js`) — pulls + pushes regardless of Claude Code being open
 - **Conflict**: newer file wins (mtime)
+- **Opt-out**: `IRONBARK_SYNC_DISABLED=1`
