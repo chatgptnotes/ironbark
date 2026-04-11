@@ -53,6 +53,16 @@ openclaw.json env section                            → remove ANTHROPIC_API_KE
 systemd/launchd service file                         → remove ANTHROPIC_* Environment lines
 ```
 
+**Recurrence note (2026-04-11):** ANTHROPIC_OAUTH_TOKEN survived a previous cleanup in openclaw.json env section. This caused a second "bot stopped responding" incident. After fixing once, always grep to verify:
+```bash
+grep -i anthropic /root/.openclaw/openclaw.json
+```
+Should return nothing.
+
+**Actual fallback after Anthropic removed:** The proxy (`openclaw agent --local`) automatically uses the next available provider in models.json. In practice it selects `openrouter/auto` — NOT zhipuai/glm-5.1 — even though zhipuai is defined. Both work fine.
+
+**Do NOT add a top-level `"model"` key to openclaw.json** — it's an unrecognized field and causes `Config invalid` errors.
+
 ### 4. Backed-up failed delivery queue
 Old error messages queue for retry and keep flooding users even after the LLM is fixed.
 
