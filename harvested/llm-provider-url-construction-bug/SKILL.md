@@ -4,7 +4,7 @@ description: "When a custom LLM provider's baseUrl already includes a version su
 source_project: "bot-2-19feb2026"
 projects_used_in: ["bot-2-19feb2026"]
 tags: [llm, openclaw, litellm, gateway, provider, baseUrl, 404, anthropic-messages, openai-completions]
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Skill: LLM Provider baseUrl + API-Type URL Construction Bug
@@ -58,6 +58,53 @@ When a WhatsApp/Telegram bot stops replying with 404 errors:
 3. **Check `baseUrl` for a trailing version** — `/v4`, `/v3`, `/v2` at the end is the bug
 4. **Check `api` type** — `anthropic-messages` or `openai-completions` both auto-append
 5. **Decide**: strip trailing version from baseUrl, OR switch to a working provider
+
+---
+
+## Quick Recovery When Bot Stops Responding
+
+### Step 1: See what's configured and has auth
+
+```bash
+openclaw models list   # on the gateway host
+```
+
+Output shows `Auth: yes/no` per model. Only switch to models with `Auth: yes`.
+
+```
+Model                        Input    Ctx    Local Auth  Tags
+zai/glm-4-plus               text     195k   no    yes   default
+openrouter/z-ai/glm-5.1      text     198k   no    yes   configured
+openai/gpt-4o-mini            text     128k   no    yes   configured
+```
+
+### Step 2: Find real API keys (TWO places to check)
+
+OpenClaw has API keys in **two separate places** — check both:
+
+```bash
+# Place 1: systemd/launchd service file
+cat /root/.config/systemd/user/openclaw-gateway.service | grep -i "_API_KEY\|_TOKEN"
+
+# Place 2: openclaw.json env section (often overlooked!)
+python3 -c "import json; d=json.load(open('/root/.openclaw/openclaw.json')); print(list(d.get('env',{}).keys()))"
+```
+
+The `openclaw.json` `env` section is read at startup and injected into the gateway process — it's a config-file alternative to systemd `Environment=` lines. Real API keys are often here even when absent from the service file.
+
+### Step 3: Switch to a working model
+
+```bash
+# One-liner: change both default and per-agent override
+ssh root@host "python3 -c \"
+import json; path='/root/.openclaw/openclaw.json'; cfg=json.load(open(path))
+m='openai/gpt-4o-mini'
+cfg['agents']['defaults']['model']['primary']=m
+[a.update({'model':m}) for a in cfg.get('agents',{}).get('list',[]) if a['id']=='main']
+json.dump(cfg,open(path,'w'),indent=2)
+print('switched to',m)\""
+# Gateway hot-reloads agents.defaults.model.primary and agents.list
+```
 
 ---
 
