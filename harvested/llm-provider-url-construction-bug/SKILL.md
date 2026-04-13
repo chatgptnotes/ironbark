@@ -4,7 +4,7 @@ description: "When a custom LLM provider's baseUrl already includes a version su
 source_project: "bot-2-19feb2026"
 projects_used_in: ["bot-2-19feb2026"]
 tags: [llm, openclaw, litellm, gateway, provider, baseUrl, 404, anthropic-messages, openai-completions]
-version: 1.0.0
+version: 1.1.0
 ---
 
 # Skill: LLM Provider baseUrl + API-Type URL Construction Bug
@@ -61,25 +61,71 @@ When a WhatsApp/Telegram bot stops replying with 404 errors:
 
 ---
 
+## Probe First: Detect Provider API Format with curl
+
+Before configuring `api` type, test both formats directly. A 200 or 4xx (auth/billing) = right path. A 404 = wrong path.
+
+```bash
+# Test Anthropic-compatible format
+curl -s -o /dev/null -w '%{http_code}' -X POST {PROVIDER_BASE_URL}/v1/messages \
+  -H 'x-api-key: YOUR_KEY' \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"MODEL_ID","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'
+
+# Test OpenAI-compatible format
+curl -s -o /dev/null -w '%{http_code}' -X POST {PROVIDER_BASE_URL}/chat/completions \
+  -H 'Authorization: Bearer YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"MODEL_ID","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+| Response | Meaning |
+|----------|---------|
+| `200` | Correct format — use this `api` type |
+| `401` / `403` | Wrong key, but correct path — use this `api` type |
+| `429` + billing error | Correct path, account out of credits — use this `api` type |
+| `404` | Wrong path — try the other format |
+
+**Z.AI result (2026-04-13):** `/v4/messages` → 404, `/v4/chat/completions` → 429 (billing). Z.AI uses **OpenAI-compatible format**.
+
+---
+
 ## Fix Options
 
-### Option A: Fix the baseUrl (if you control the provider endpoint)
+### Option A: Wrong api type (provider uses different format than configured)
 
 ```json
-// BEFORE (broken)
+// BEFORE (broken) — ZAI example: baseUrl correct, api type wrong
 "zai": {
   "baseUrl": "https://api.z.ai/api/coding/paas/v4",
-  "api": "anthropic-messages"
+  "api": "anthropic-messages"   // ← appends /v1/messages → 404
 }
 
-// AFTER (fixed) — strip /v4 from the end
+// AFTER (fixed) — use openai-completions: appends /chat/completions → 200
 "zai": {
-  "baseUrl": "https://api.z.ai/api/coding/paas",
-  "api": "anthropic-messages"
+  "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+  "api": "openai-completions"
 }
 ```
 
-### Option B: Switch primary model to a known-working provider (fastest fix)
+### Option B: Wrong baseUrl (version suffix stacking)
+
+```json
+// BEFORE (broken) — baseUrl already has /v4, anthropic-messages adds /v1/messages
+"provider": {
+  "baseUrl": "https://provider.com/api/v4",
+  "api": "anthropic-messages"   // → /api/v4/v1/messages (404)
+}
+
+// AFTER — strip trailing version from baseUrl
+"provider": {
+  "baseUrl": "https://provider.com/api",
+  "api": "anthropic-messages"   // → /api/v1/messages (200)
+}
+```
+
+### Option C: Switch primary model to a known-working provider (fastest fix)
 
 ```bash
 # OpenClaw: edit openclaw.json agents.defaults.model.primary
@@ -99,7 +145,7 @@ json.dump(cfg, open(path,'w'), indent=2)
 
 | Domain | Provider Example | Bad baseUrl | Good baseUrl |
 |--------|-----------------|-------------|--------------|
-| Z.AI (ZhipuAI) | `zai/glm-4-plus` | `https://api.z.ai/api/coding/paas/v4` | `https://api.z.ai/api/coding/paas` |
+| Z.AI (ZhipuAI) | `zai/glm-4-plus` | baseUrl correct; wrong `api` type (`anthropic-messages` → use `openai-completions`) | baseUrl `https://api.z.ai/api/coding/paas/v4` + `api: "openai-completions"` |
 | Azure OpenAI | `azure/gpt-4o` | `https://myapp.openai.azure.com/openai/v1` | `https://myapp.openai.azure.com/openai` |
 | Self-hosted Ollama proxy | `local/llama3` | `http://localhost:11434/api/v1` | `http://localhost:11434/api` |
 
