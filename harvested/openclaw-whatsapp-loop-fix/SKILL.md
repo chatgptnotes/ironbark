@@ -1,10 +1,10 @@
 ---
 name: "OpenClaw WhatsApp Echo Loop & LLM Quota Fix"
-description: "Stop infinite WhatsApp message loops caused by selfChatMode and quota-exceeded LLM keys in OpenClaw"
+description: "Stop infinite WhatsApp message loops caused by selfChatMode and quota-exceeded LLM keys in OpenClaw. Also covers zai/custom provider 404 bug and full Mac removal procedure."
 source_project: "bot-2-19feb2026"
 projects_used_in: ["bot-2-19feb2026"]
-tags: [openclaw, whatsapp, llm, echo-loop, quota, self-chat, gateway]
-version: 1.0.0
+tags: [openclaw, whatsapp, llm, echo-loop, quota, self-chat, gateway, zai, provider, 404, mac-removal]
+version: 1.1.0
 ---
 
 # Skill: Fix OpenClaw WhatsApp Echo Loop & LLM Quota Errors
@@ -63,6 +63,28 @@ Should return nothing.
 
 **Do NOT add a top-level `"model"` key to openclaw.json** — it's an unrecognized field and causes `Config invalid` errors.
 
+### 5. Custom provider baseUrl + api-type URL mismatch (e.g. zai/glm-4-plus)
+
+When a custom provider (e.g. `zai`) has `api: "anthropic-messages"` and a `baseUrl` ending with a version like `/v4`, OpenClaw appends `/v1/messages` → `/v4/v1/messages` → **404**.
+
+Error in systemd logs:
+```
+[agent] embedded run agent end: isError=true model=glm-4-plus provider=zai error=404 {"status":404,"error":"Not Found","path":"/v4/v1/messages"}
+[agent] embedded run failover decision: decision=surface_error reason=model_not_found provider=zai/glm-4-plus
+```
+
+**Fix:** Change primary model to `openrouter/auto` (gateway hot-reloads this field):
+```bash
+ssh -i ~/.ssh/vps_hostinger root@hopetech.me "python3 -c \"
+import json
+path = '/root/.openclaw/openclaw.json'
+cfg = json.load(open(path))
+cfg['agents']['defaults']['model']['primary'] = 'openrouter/auto'
+json.dump(cfg, open(path,'w'), indent=2)
+\""
+```
+See `llm-provider-url-construction-bug` skill for the full diagnosis pattern.
+
 ### 4. Backed-up failed delivery queue
 Old error messages queue for retry and keep flooding users even after the LLM is fixed.
 
@@ -74,18 +96,45 @@ rm /Users/murali/.openclaw/delivery-queue/failed/*.json  # Mac
 
 ---
 
-## Architecture: Two Separate OpenClaw Instances
+## Architecture: Single Instance (VPS only, as of 2026-04-13)
 
-This project has two instances — always check BOTH when debugging:
+**Mac openclaw was fully removed on 2026-04-13.** Only the VPS instance remains.
 
-| | Mac Gateway | VPS Proxy |
-|---|---|---|
-| WhatsApp # | Personal (+919373111709) | DoubleTick business number |
-| Process | `openclaw-gateway` via launchd | `openclaw-proxy` (PM2) → `openclaw agent --local` |
-| Config | `~/.openclaw/openclaw.json` | `/root/.openclaw/openclaw.json` |
-| Model (working) | `openai/gpt-4o-mini` | `zhipuai/glm-5.1` |
-| SSH | local | `ssh -i ~/.ssh/vps_hostinger root@hopetech.me` |
-| Restart | `pkill -f openclaw-gateway` (launchd auto-restarts) | `pm2 restart openclaw-proxy` |
+| | VPS Gateway + Proxy |
+|---|---|
+| WhatsApp # | Personal (+919373111709) via gateway |
+| Process | `openclaw-gateway` (systemd) + `openclaw-proxy` (PM2) |
+| Config | `/root/.openclaw/openclaw.json` |
+| Model (working) | `openrouter/auto` (gateway default) |
+| SSH | `ssh -i ~/.ssh/vps_hostinger root@hopetech.me` |
+| Restart gateway | `systemctl --user restart openclaw-gateway` |
+| Restart proxy | `pm2 restart openclaw-proxy` |
+
+### Full Mac Removal Procedure (reference)
+
+If you need to remove openclaw from a Mac completely:
+```bash
+# 1. Find all launchd plists (may be named openclaw OR clawdbot)
+ls ~/Library/LaunchAgents/ | grep -iE 'openclaw|claw'
+
+# 2. Unload and remove each plist
+launchctl unload ~/Library/LaunchAgents/<plist-name>.plist
+rm ~/Library/LaunchAgents/<plist-name>.plist
+
+# 3. Verify process is gone
+ps aux | grep -E 'openclaw|clawdbot' | grep -v grep
+
+# 4. Uninstall npm packages (both old and new names)
+npm list -g --depth=0 | grep -E 'claw|openclaw'
+npm uninstall -g clawdbot openclaw
+# If npm uninstall fails with ENOTEMPTY:
+rm -rf ~/.npm-global/lib/node_modules/openclaw
+
+# 5. Optionally remove data dirs (ask user first)
+# rm -rf ~/.openclaw ~/.clawdbot
+```
+
+Note: the package may be named `clawdbot` (old) or `openclaw` (new) — check both.
 
 ---
 
